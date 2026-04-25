@@ -38,9 +38,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'myapps.usuarios',
+    'myapps.ubicaciones',
+    'myapps.iot',
     'myapps.riego',
-    'myapps.sensores',
-    'myapps.devices',
+    'myapps.sistema',
     'rest_framework',
     'corsheaders',
 ]
