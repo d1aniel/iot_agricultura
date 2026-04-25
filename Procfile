@@ -1,0 +1,1 @@
+web: gunicorn agricultura_inteligente.wsgi:application --bind 0.0.0.0:$PORT
