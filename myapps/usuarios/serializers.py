@@ -37,7 +37,7 @@ class UserSerializer(serializers.ModelSerializer):
         return obj.get_full_name()
 
     def get_tiene_2fa(self, obj):
-        return hasattr(obj, 'dispositivo_2fa') and obj.dispositivo_2fa.confirmado
+        return False
 
 
 class RegistroSerializer(serializers.Serializer):

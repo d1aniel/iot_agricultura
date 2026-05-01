@@ -1,7 +1,5 @@
-from django.core.mail import BadHeaderError
 from django.db import transaction
 from django.utils import timezone
-from smtplib import SMTPException
 
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
@@ -9,19 +7,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from myapps.sistema.models import AuditoriaSistema
-from myapps.usuarios.models import AuthToken, Rol, TwoFactorDevice, UsuarioPerfil, UsuarioRol
+from myapps.usuarios.models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
 from myapps.usuarios.serializers import (
     AuthTokenSerializer,
     LoginSerializer,
     RegistroSerializer,
     RolSerializer,
-    TwoFactorConfirmSerializer,
     UserSerializer,
     UsuarioPerfilSerializer,
     UsuarioRolSerializer,
-    Verificar2FASerializer,
 )
-from myapps.usuarios.email_otp import EmailOTPDeliveryError, enviar_codigo_otp_email
 
 
 class UsuarioPerfilViewSet(viewsets.ModelViewSet):
@@ -60,7 +55,7 @@ def registrar_auditoria_login(user, request, descripcion):
     )
 
 
-def crear_respuesta_token(user, request, nombre_dispositivo=None):
+def crear_respuesta_token(user, request, nombre_dispositivo=None, status_code=status.HTTP_200_OK):
     token = AuthToken.crear_token(
         usuario=user,
         nombre_dispositivo=nombre_dispositivo,
@@ -76,7 +71,7 @@ def crear_respuesta_token(user, request, nombre_dispositivo=None):
         'token': token,
         'tipo': 'Token',
         'usuario': UserSerializer(user).data,
-    })
+    }, status=status_code)
 
 
 class RegistroView(APIView):
@@ -86,53 +81,9 @@ class RegistroView(APIView):
         serializer = RegistroSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            with transaction.atomic():
-                user = serializer.save()
-                TwoFactorDevice.objects.create(usuario=user, secret='', confirmado=False)
-                challenge = enviar_codigo_otp_email(
-                    usuario=user,
-                    direccion_ip=obtener_ip(request),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    proposito='ACTIVAR_2FA',
-                )
-        except (EmailOTPDeliveryError, SMTPException, OSError, BadHeaderError):
-            return Response(
-                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion de correo del backend.'},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        return Response({
-            'usuario': UserSerializer(user).data,
-            'requiere_2fa': True,
-            'challenge_id': challenge.challenge_id,
-            'expira_en': challenge.fecha_expiracion,
-            'mensaje': 'Registro creado. Codigo de verificacion enviado al correo.',
-        }, status=status.HTTP_201_CREATED)
-
-
-class ConfirmarRegistro2FAView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = TwoFactorConfirmSerializer(
-            data=request.data,
-            context={'proposito': 'ACTIVAR_2FA'},
-        )
-        serializer.is_valid(raise_exception=True)
-        challenge = serializer.context['challenge']
-        user = challenge.usuario
-        device, _ = TwoFactorDevice.objects.get_or_create(usuario=user, defaults={'secret': ''})
-
-        if not challenge.verificar_codigo(serializer.validated_data['codigo']):
-            return Response({'detail': 'Codigo 2FA invalido.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        device.confirmado = True
-        device.fecha_confirmacion = timezone.now()
-        device.save(update_fields=['confirmado', 'fecha_confirmacion'])
-        challenge.usado = True
-        challenge.save(update_fields=['usado'])
-        return crear_respuesta_token(user, request)
+        with transaction.atomic():
+            user = serializer.save()
+        return crear_respuesta_token(user, request, status_code=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
@@ -142,55 +93,6 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
-        dispositivo = getattr(user, 'dispositivo_2fa', None)
-
-        if not user.email:
-            return Response({'detail': 'El usuario no tiene correo configurado para 2FA.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not dispositivo:
-            dispositivo = TwoFactorDevice.objects.create(usuario=user, secret='', confirmado=False)
-
-        proposito = 'LOGIN' if dispositivo.confirmado else 'ACTIVAR_2FA'
-        try:
-            challenge = enviar_codigo_otp_email(
-                usuario=user,
-                direccion_ip=obtener_ip(request),
-                user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                proposito=proposito,
-            )
-        except (EmailOTPDeliveryError, SMTPException, OSError, BadHeaderError):
-            return Response(
-                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion de correo del backend.'},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        return Response({
-            'requiere_2fa': True,
-            'challenge_id': challenge.challenge_id,
-            'expira_en': challenge.fecha_expiracion,
-            'mensaje': 'Codigo de verificacion enviado al correo.',
-            '2fa_pendiente': not dispositivo.confirmado,
-        }, status=status.HTTP_202_ACCEPTED)
-
-
-class Verificar2FAView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = Verificar2FASerializer(data=request.data, context={'proposito': 'LOGIN'})
-        serializer.is_valid(raise_exception=True)
-        challenge = serializer.context['challenge']
-        user = challenge.usuario
-        dispositivo = getattr(user, 'dispositivo_2fa', None)
-
-        if not dispositivo or not dispositivo.confirmado:
-            return Response({'detail': 'El usuario no tiene 2FA activo.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        codigo = serializer.validated_data['codigo']
-        if not challenge.verificar_codigo(codigo):
-            return Response({'detail': 'Codigo 2FA invalido.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        challenge.usado = True
-        challenge.save(update_fields=['usado'])
         return crear_respuesta_token(user, request, serializer.validated_data.get('nombre_dispositivo'))
 
 
@@ -209,74 +111,6 @@ class PerfilActualView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
-
-
-class TwoFactorSetupView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        if not request.user.email:
-            return Response({'detail': 'Tu usuario no tiene correo configurado.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        device, created = TwoFactorDevice.objects.get_or_create(
-            usuario=request.user,
-            defaults={'secret': ''},
-        )
-        if not created and device.confirmado:
-            return Response({'detail': '2FA ya esta activo.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            challenge = enviar_codigo_otp_email(
-                usuario=request.user,
-                direccion_ip=obtener_ip(request),
-                user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                proposito='ACTIVAR_2FA',
-            )
-        except (EmailOTPDeliveryError, SMTPException, OSError, BadHeaderError):
-            return Response(
-                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion de correo del backend.'},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        return Response({
-            'challenge_id': challenge.challenge_id,
-            'expira_en': challenge.fecha_expiracion,
-            'confirmado': device.confirmado,
-            'mensaje': 'Codigo de activacion enviado al correo.',
-        })
-
-
-class TwoFactorConfirmView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        serializer = TwoFactorConfirmSerializer(
-            data=request.data,
-            context={'request': request, 'proposito': 'ACTIVAR_2FA'},
-        )
-        serializer.is_valid(raise_exception=True)
-        device = getattr(request.user, 'dispositivo_2fa', None)
-
-        if not device:
-            return Response({'detail': 'Primero solicita el codigo 2FA.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        codigo = serializer.validated_data['codigo']
-        challenge = serializer.context['challenge']
-        if not challenge.verificar_codigo(codigo):
-            return Response({'detail': 'Codigo 2FA invalido.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        device.confirmado = True
-        device.fecha_confirmacion = timezone.now()
-        device.save(update_fields=['confirmado', 'fecha_confirmacion'])
-        challenge.usado = True
-        challenge.save(update_fields=['usado'])
-        return Response({'detail': '2FA activado correctamente.'})
-
-
-class TwoFactorDisableView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        return Response({'detail': 'La verificacion en dos pasos es obligatoria y no se puede desactivar.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AuthTokenViewSet(viewsets.ReadOnlyModelViewSet):
