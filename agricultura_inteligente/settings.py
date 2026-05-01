@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 import pymysql
 pymysql.version_info = (2, 2, 1, 'final', 0)
 pymysql.install_as_MySQLdb()
@@ -123,6 +124,17 @@ def database_from_url(database_url):
     return database_config
 
 
+def require_database_config(database_config, required_keys):
+    missing_keys = [key for key in required_keys if not database_config.get(key)]
+    if missing_keys:
+        raise ImproperlyConfigured(
+            'Faltan variables de entorno para la base de datos: '
+            f'{", ".join(missing_keys)}. '
+            'Configuralas en Railway > servicio backend > Variables.'
+        )
+    return database_config
+
+
 def get_database_config():
     database_url = get_first_config('DATABASE_URL', 'MYSQL_URL', 'MYSQL_PUBLIC_URL')
     if database_url:
@@ -130,16 +142,16 @@ def get_database_config():
 
     database_engine = config('DATABASE_ENGINE', default='mysql')
     if database_engine == 'postgresql':
-        return {
+        return require_database_config({
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': get_first_config('POSTGRES_NAME', 'POSTGRES_DB', 'PGDATABASE'),
             'USER': get_first_config('POSTGRES_USER', 'PGUSER'),
             'PASSWORD': get_first_config('POSTGRES_PASSWORD', 'PGPASSWORD'),
             'HOST': get_first_config('POSTGRES_HOST', 'PGHOST'),
             'PORT': get_first_config('POSTGRES_PORT', 'PGPORT', default='5432'),
-        }
+        }, ['NAME', 'USER', 'PASSWORD', 'HOST', 'PORT'])
     if database_engine == 'mssql':
-        return {
+        return require_database_config({
             'ENGINE': 'mssql',
             'NAME': config('MSSQL_NAME', default=''),
             'USER': config('MSSQL_USER', default=''),
@@ -149,29 +161,29 @@ def get_database_config():
             'OPTIONS': {
                 'driver': 'ODBC Driver 17 for SQL Server',
             },
-        }
+        }, ['NAME', 'USER', 'PASSWORD', 'HOST', 'PORT'])
     if database_engine == 'oracle':
         oracle_host = config('ORACLE_HOST', default='')
         oracle_port = config('ORACLE_PORT', default='1521')
         oracle_sid = config('ORACLE_SID', default='XE')
-        return {
+        return require_database_config({
             'ENGINE': 'django.db.backends.oracle',
             'NAME': f'{oracle_host}:{oracle_port}/{oracle_sid}',
             'USER': config('ORACLE_USER', default=''),
             'PASSWORD': config('ORACLE_PASSWORD', default=''),
-        }
+        }, ['NAME', 'USER', 'PASSWORD'])
 
-    return {
+    return require_database_config({
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': get_first_config('MYSQL_NAME', 'MYSQLDATABASE'),
+        'NAME': get_first_config('MYSQL_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE'),
         'USER': get_first_config('MYSQL_USER', 'MYSQLUSER'),
-        'PASSWORD': get_first_config('MYSQL_PASSWORD', 'MYSQLPASSWORD'),
-        'HOST': get_first_config('MYSQL_HOST', 'MYSQLHOST'),
+        'PASSWORD': get_first_config('MYSQL_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_ROOT_PASSWORD'),
+        'HOST': get_first_config('MYSQL_HOST', 'MYSQLHOST', 'RAILWAY_PRIVATE_DOMAIN'),
         'PORT': get_first_config('MYSQL_PORT', 'MYSQLPORT', default='3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         },
-    }
+    }, ['NAME', 'USER', 'PASSWORD', 'HOST', 'PORT'])
 
 
 DATABASES = {
