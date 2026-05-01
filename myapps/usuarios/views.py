@@ -21,7 +21,7 @@ from myapps.usuarios.serializers import (
     UsuarioRolSerializer,
     Verificar2FASerializer,
 )
-from myapps.usuarios.email_otp import enviar_codigo_otp_email
+from myapps.usuarios.email_otp import EmailOTPDeliveryError, enviar_codigo_otp_email
 
 
 class UsuarioPerfilViewSet(viewsets.ModelViewSet):
@@ -96,9 +96,9 @@ class RegistroView(APIView):
                     user_agent=request.META.get('HTTP_USER_AGENT', ''),
                     proposito='ACTIVAR_2FA',
                 )
-        except (SMTPException, OSError, BadHeaderError):
+        except (EmailOTPDeliveryError, SMTPException, OSError, BadHeaderError):
             return Response(
-                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion SMTP del backend.'},
+                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion de correo del backend.'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -151,12 +151,18 @@ class LoginView(APIView):
             dispositivo = TwoFactorDevice.objects.create(usuario=user, secret='', confirmado=False)
 
         proposito = 'LOGIN' if dispositivo.confirmado else 'ACTIVAR_2FA'
-        challenge = enviar_codigo_otp_email(
-            usuario=user,
-            direccion_ip=obtener_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            proposito=proposito,
-        )
+        try:
+            challenge = enviar_codigo_otp_email(
+                usuario=user,
+                direccion_ip=obtener_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                proposito=proposito,
+            )
+        except (EmailOTPDeliveryError, SMTPException, OSError, BadHeaderError):
+            return Response(
+                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion de correo del backend.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response({
             'requiere_2fa': True,
             'challenge_id': challenge.challenge_id,
@@ -219,12 +225,18 @@ class TwoFactorSetupView(APIView):
         if not created and device.confirmado:
             return Response({'detail': '2FA ya esta activo.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        challenge = enviar_codigo_otp_email(
-            usuario=request.user,
-            direccion_ip=obtener_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            proposito='ACTIVAR_2FA',
-        )
+        try:
+            challenge = enviar_codigo_otp_email(
+                usuario=request.user,
+                direccion_ip=obtener_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                proposito='ACTIVAR_2FA',
+            )
+        except (EmailOTPDeliveryError, SMTPException, OSError, BadHeaderError):
+            return Response(
+                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion de correo del backend.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response({
             'challenge_id': challenge.challenge_id,
             'expira_en': challenge.fecha_expiracion,
