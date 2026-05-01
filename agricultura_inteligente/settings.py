@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+from urllib.parse import urlparse
+
 from decouple import config
 import pymysql
 pymysql.version_info = (2, 2, 1, 'final', 0)
@@ -88,52 +90,92 @@ WSGI_APPLICATION = 'agricultura_inteligente.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# Get the selected database engine from environment
-DATABASE_ENGINE = config('DATABASE_ENGINE', default='mysql')
+def get_first_config(*names, default=''):
+    for name in names:
+        value = config(name, default=None)
+        if value not in (None, ''):
+            return value
+    return default
 
-# Database configurations
-DATABASE_CONFIGS = {
-    'mysql': {
+
+def database_from_url(database_url):
+    parsed = urlparse(database_url)
+    engine_by_scheme = {
+        'mysql': 'django.db.backends.mysql',
+        'mysql2': 'django.db.backends.mysql',
+        'postgres': 'django.db.backends.postgresql',
+        'postgresql': 'django.db.backends.postgresql',
+    }
+    engine = engine_by_scheme.get(parsed.scheme)
+    if not engine:
+        raise ValueError(f'DATABASE_URL usa un motor no soportado: {parsed.scheme}')
+
+    database_config = {
+        'ENGINE': engine,
+        'NAME': parsed.path.lstrip('/'),
+        'USER': parsed.username or '',
+        'PASSWORD': parsed.password or '',
+        'HOST': parsed.hostname or '',
+        'PORT': str(parsed.port or ''),
+    }
+    if engine == 'django.db.backends.mysql':
+        database_config['OPTIONS'] = {'charset': 'utf8mb4'}
+    return database_config
+
+
+def get_database_config():
+    database_url = get_first_config('DATABASE_URL', 'MYSQL_URL', 'MYSQL_PUBLIC_URL')
+    if database_url:
+        return database_from_url(database_url)
+
+    database_engine = config('DATABASE_ENGINE', default='mysql')
+    if database_engine == 'postgresql':
+        return {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': get_first_config('POSTGRES_NAME', 'POSTGRES_DB', 'PGDATABASE'),
+            'USER': get_first_config('POSTGRES_USER', 'PGUSER'),
+            'PASSWORD': get_first_config('POSTGRES_PASSWORD', 'PGPASSWORD'),
+            'HOST': get_first_config('POSTGRES_HOST', 'PGHOST'),
+            'PORT': get_first_config('POSTGRES_PORT', 'PGPORT', default='5432'),
+        }
+    if database_engine == 'mssql':
+        return {
+            'ENGINE': 'mssql',
+            'NAME': config('MSSQL_NAME', default=''),
+            'USER': config('MSSQL_USER', default=''),
+            'PASSWORD': config('MSSQL_PASSWORD', default=''),
+            'HOST': config('MSSQL_HOST', default=''),
+            'PORT': config('MSSQL_PORT', default='1433'),
+            'OPTIONS': {
+                'driver': 'ODBC Driver 17 for SQL Server',
+            },
+        }
+    if database_engine == 'oracle':
+        oracle_host = config('ORACLE_HOST', default='')
+        oracle_port = config('ORACLE_PORT', default='1521')
+        oracle_sid = config('ORACLE_SID', default='XE')
+        return {
+            'ENGINE': 'django.db.backends.oracle',
+            'NAME': f'{oracle_host}:{oracle_port}/{oracle_sid}',
+            'USER': config('ORACLE_USER', default=''),
+            'PASSWORD': config('ORACLE_PASSWORD', default=''),
+        }
+
+    return {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': config('MYSQL_NAME'),
-        'USER': config('MYSQL_USER'),
-        'PASSWORD': config('MYSQL_PASSWORD'),
-        'HOST': config('MYSQL_HOST'),
-        'PORT': config('MYSQL_PORT'),
+        'NAME': get_first_config('MYSQL_NAME', 'MYSQLDATABASE'),
+        'USER': get_first_config('MYSQL_USER', 'MYSQLUSER'),
+        'PASSWORD': get_first_config('MYSQL_PASSWORD', 'MYSQLPASSWORD'),
+        'HOST': get_first_config('MYSQL_HOST', 'MYSQLHOST'),
+        'PORT': get_first_config('MYSQL_PORT', 'MYSQLPORT', default='3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         },
-    },
-    'postgresql': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRES_NAME'),
-        'USER': config('POSTGRES_USER'),
-        'PASSWORD': config('POSTGRES_PASSWORD'),
-        'HOST': config('POSTGRES_HOST'),
-        'PORT': config('POSTGRES_PORT'),
-    },
-    'mssql': {
-        'ENGINE': 'mssql',
-        'NAME': config('MSSQL_NAME'),
-        'USER': config('MSSQL_USER'),
-        'PASSWORD': config('MSSQL_PASSWORD'),
-        'HOST': config('MSSQL_HOST'),
-        'PORT': config('MSSQL_PORT'),
-        'OPTIONS': {
-            'driver': 'ODBC Driver 17 for SQL Server',
-        },
-    },
-    'oracle': {
-        'ENGINE': 'django.db.backends.oracle',
-        'NAME': f"{config('ORACLE_HOST')}:{config('ORACLE_PORT')}/{config('ORACLE_SID', default='XE')}",
-        'USER': config('ORACLE_USER'),
-        'PASSWORD': config('ORACLE_PASSWORD'),
-    },
-}
+    }
 
-# Set the database configuration based on the selected engine
+
 DATABASES = {
-    'default': DATABASE_CONFIGS.get(DATABASE_ENGINE, DATABASE_CONFIGS['mysql'])
+    'default': get_database_config()
 }
 
 
