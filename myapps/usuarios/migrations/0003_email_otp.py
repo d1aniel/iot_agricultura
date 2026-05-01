@@ -1,6 +1,6 @@
-# Generated manually for email OTP challenges.
+# Reserved migration kept for compatibility with deployed databases.
 
-from django.db import migrations, models
+from django.db import migrations
 
 
 class Migration(migrations.Migration):
@@ -9,20 +9,4 @@ class Migration(migrations.Migration):
         ('usuarios', '0002_auth_token_2fa'),
     ]
 
-    operations = [
-        migrations.AlterField(
-            model_name='twofactordevice',
-            name='secret',
-            field=models.CharField(blank=True, max_length=64, null=True),
-        ),
-        migrations.AddField(
-            model_name='loginchallenge',
-            name='codigo_hash',
-            field=models.CharField(blank=True, max_length=64, null=True),
-        ),
-        migrations.AddField(
-            model_name='loginchallenge',
-            name='proposito',
-            field=models.CharField(choices=[('LOGIN', 'Inicio de sesion'), ('ACTIVAR_2FA', 'Activar 2FA'), ('DESACTIVAR_2FA', 'Desactivar 2FA')], default='LOGIN', max_length=30),
-        ),
-    ]
+    operations = []

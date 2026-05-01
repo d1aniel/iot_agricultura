@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import AuthToken, LoginChallenge, Rol, UsuarioPerfil, UsuarioRol
+from .models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
 
 
 class UsuarioPerfilSerializer(serializers.ModelSerializer):
@@ -26,18 +26,14 @@ class UsuarioRolSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     nombre_completo = serializers.SerializerMethodField()
-    tiene_2fa = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'nombre_completo', 'is_active', 'tiene_2fa')
-        read_only_fields = ('id', 'is_active', 'nombre_completo', 'tiene_2fa')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'nombre_completo', 'is_active')
+        read_only_fields = ('id', 'is_active', 'nombre_completo')
 
     def get_nombre_completo(self, obj):
         return obj.get_full_name()
-
-    def get_tiene_2fa(self, obj):
-        return False
 
 
 class RegistroSerializer(serializers.Serializer):
@@ -90,46 +86,6 @@ class LoginSerializer(serializers.Serializer):
 
         attrs['user'] = user
         return attrs
-
-
-class Verificar2FASerializer(serializers.Serializer):
-    challenge_id = serializers.CharField()
-    codigo = serializers.CharField(min_length=6, max_length=6)
-    nombre_dispositivo = serializers.CharField(required=False, allow_blank=True, max_length=120)
-
-    def validate_challenge_id(self, value):
-        proposito = self.context.get('proposito', 'LOGIN')
-        challenge = LoginChallenge.objects.select_related('usuario').filter(
-            challenge_id=value,
-            proposito=proposito,
-        ).first()
-        if not challenge or not challenge.esta_activo:
-            raise serializers.ValidationError('Reto 2FA invalido o expirado.')
-        self.context['challenge'] = challenge
-        return value
-
-
-class TwoFactorConfirmSerializer(serializers.Serializer):
-    challenge_id = serializers.CharField()
-    codigo = serializers.CharField(min_length=6, max_length=6)
-
-    def validate_challenge_id(self, value):
-        proposito = self.context.get('proposito', 'ACTIVAR_2FA')
-        filtros = {
-            'challenge_id': value,
-            'proposito': proposito,
-        }
-        request = self.context.get('request')
-        if request and request.user and request.user.is_authenticated:
-            filtros['usuario'] = request.user
-
-        challenge = LoginChallenge.objects.select_related('usuario').filter(
-            **filtros,
-        ).first()
-        if not challenge or not challenge.esta_activo:
-            raise serializers.ValidationError('Reto 2FA invalido o expirado.')
-        self.context['challenge'] = challenge
-        return value
 
 
 class AuthTokenSerializer(serializers.ModelSerializer):
