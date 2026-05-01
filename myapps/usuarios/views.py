@@ -1,4 +1,8 @@
+from django.core.mail import BadHeaderError
+from django.db import transaction
 from django.utils import timezone
+from smtplib import SMTPException
+
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
@@ -81,14 +85,23 @@ class RegistroView(APIView):
     def post(self, request):
         serializer = RegistroSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        TwoFactorDevice.objects.create(usuario=user, secret='', confirmado=False)
-        challenge = enviar_codigo_otp_email(
-            usuario=user,
-            direccion_ip=obtener_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            proposito='ACTIVAR_2FA',
-        )
+
+        try:
+            with transaction.atomic():
+                user = serializer.save()
+                TwoFactorDevice.objects.create(usuario=user, secret='', confirmado=False)
+                challenge = enviar_codigo_otp_email(
+                    usuario=user,
+                    direccion_ip=obtener_ip(request),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    proposito='ACTIVAR_2FA',
+                )
+        except (SMTPException, OSError, BadHeaderError):
+            return Response(
+                {'detail': 'No se pudo enviar el codigo de verificacion. Revisa la configuracion SMTP del backend.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         return Response({
             'usuario': UserSerializer(user).data,
             'requiere_2fa': True,
