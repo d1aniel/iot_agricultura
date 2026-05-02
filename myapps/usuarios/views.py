@@ -19,6 +19,36 @@ from myapps.usuarios.serializers import (
 )
 
 
+class ApiRootView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({
+            'detail': 'API de Agricultura Inteligente. Usa el frontend para iniciar sesion o envia JSON a los endpoints de autenticacion.',
+            'login': {
+                'method': 'POST',
+                'url': '/api/users/login/',
+                'body': {
+                    'username': 'usuario',
+                    'password': 'contrasena',
+                    'nombre_dispositivo': 'Navegador web',
+                },
+            },
+            'registro': {
+                'method': 'POST',
+                'url': '/api/users/register/',
+                'body': {
+                    'username': 'usuario',
+                    'password': 'contrasena',
+                    'email': 'correo@example.com',
+                    'first_name': 'Nombre',
+                    'last_name': 'Apellido',
+                    'telefono': '3000000000',
+                },
+            },
+        })
+
+
 class UsuarioPerfilViewSet(viewsets.ModelViewSet):
     queryset = UsuarioPerfil.objects.all()
     serializer_class = UsuarioPerfilSerializer
@@ -77,6 +107,19 @@ def crear_respuesta_token(user, request, nombre_dispositivo=None, status_code=st
 class RegistroView(APIView):
     permission_classes = [AllowAny]
 
+    def get(self, request):
+        return Response({
+            'detail': 'Envia una peticion POST con JSON para registrar un usuario.',
+            'body': {
+                'username': 'usuario',
+                'password': 'contrasena',
+                'email': 'correo@example.com',
+                'first_name': 'Nombre',
+                'last_name': 'Apellido',
+                'telefono': '3000000000',
+            },
+        })
+
     def post(self, request):
         serializer = RegistroSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -88,6 +131,16 @@ class RegistroView(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({
+            'detail': 'Envia una peticion POST con JSON para iniciar sesion.',
+            'body': {
+                'username': 'usuario',
+                'password': 'contrasena',
+                'nombre_dispositivo': 'Navegador web',
+            },
+        })
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
