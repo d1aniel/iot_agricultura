@@ -4,6 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from .models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
+from .permissions import usuario_tiene_rol_administrativo
 
 
 class UsuarioPerfilSerializer(serializers.ModelSerializer):
@@ -60,14 +61,40 @@ class UsuarioRolSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     nombre_completo = serializers.SerializerMethodField()
+    roles = serializers.SerializerMethodField()
+    es_administrador_o_auditor = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'nombre_completo', 'is_active')
-        read_only_fields = ('id', 'is_active', 'nombre_completo')
+        fields = (
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'nombre_completo',
+            'is_active',
+            'roles',
+            'es_administrador_o_auditor',
+        )
+        read_only_fields = ('id', 'is_active', 'nombre_completo', 'roles', 'es_administrador_o_auditor')
 
     def get_nombre_completo(self, obj):
         return obj.get_full_name()
+
+    def get_roles(self, obj):
+        perfil = getattr(obj, 'perfil_iot', None)
+        if not perfil:
+            return []
+
+        return list(
+            perfil.roles
+            .filter(estado='ACTIVO', rol__estado='ACTIVO')
+            .values_list('rol__nombre', flat=True)
+        )
+
+    def get_es_administrador_o_auditor(self, obj):
+        return usuario_tiene_rol_administrativo(obj)
 
 
 class RegistroSerializer(serializers.Serializer):

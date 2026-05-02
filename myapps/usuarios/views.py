@@ -3,12 +3,13 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 
 from rest_framework import status, viewsets
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from myapps.sistema.models import AuditoriaSistema
 from myapps.usuarios.models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
+from myapps.usuarios.permissions import IsAdministradorOrAuditor
 from myapps.usuarios.serializers import (
     AuthTokenSerializer,
     LoginSerializer,
@@ -86,25 +87,25 @@ class ApiRootView(APIView):
 class UsuarioPerfilViewSet(viewsets.ModelViewSet):
     queryset = UsuarioPerfil.objects.select_related('usuario', 'organizacion').all()
     serializer_class = UsuarioPerfilSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdministradorOrAuditor]
 
 
 class AuthUserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.order_by('id')
     serializer_class = UserSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdministradorOrAuditor]
 
 
 class RolViewSet(viewsets.ModelViewSet):
     queryset = Rol.objects.all()
     serializer_class = RolSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdministradorOrAuditor]
 
 
 class UsuarioRolViewSet(viewsets.ModelViewSet):
     queryset = UsuarioRol.objects.all()
     serializer_class = UsuarioRolSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdministradorOrAuditor]
 
 
 def obtener_ip(request):
