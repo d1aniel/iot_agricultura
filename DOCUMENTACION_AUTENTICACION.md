@@ -110,6 +110,10 @@ Respuesta:
 
 `POST /api_usuarios/auth/login/`
 
+Tambien esta disponible el alias compatible:
+
+`POST /api/users/login/`
+
 Body:
 
 ```json
