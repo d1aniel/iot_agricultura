@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from django.contrib.auth.models import User
 
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
@@ -24,10 +25,17 @@ class ApiRootView(APIView):
 
     def get(self, request):
         return Response({
-            'detail': 'API de Agricultura Inteligente. Usa el frontend para iniciar sesion o envia JSON a los endpoints de autenticacion.',
+            'detail': 'API de Agricultura Inteligente. Las rutas de modulos estan protegidas por token.',
+            'seguridad': {
+                'mensaje_sin_token': 'Las credenciales de autenticacion no se proveyeron.',
+                'header_requerido': 'Authorization: Token <token>',
+                'tambien_acepta': 'Authorization: Bearer <token>',
+                'nota_evaluacion': 'Para validar los modulos, inicia sesion con las credenciales entregadas y usa el token recibido en cada peticion.',
+            },
             'login': {
                 'method': 'POST',
-                'url': '/api/users/login/',
+                'url': '/api_usuarios/auth/login/',
+                'alias': '/api/users/login/',
                 'body': {
                     'username': 'usuario',
                     'password': 'contrasena',
@@ -36,7 +44,8 @@ class ApiRootView(APIView):
             },
             'registro': {
                 'method': 'POST',
-                'url': '/api/users/register/',
+                'url': '/api_usuarios/auth/registro/',
+                'alias': '/api/users/register/',
                 'body': {
                     'username': 'usuario',
                     'password': 'contrasena',
@@ -46,13 +55,44 @@ class ApiRootView(APIView):
                     'telefono': '3000000000',
                 },
             },
+            'modulos_protegidos': {
+                'usuarios': '/api_usuarios/usuarios/',
+                'roles': '/api_usuarios/roles/',
+                'usuario_roles': '/api_usuarios/usuario-roles/',
+                'tokens': '/api_usuarios/tokens/',
+                'auth_users': '/api_usuarios/auth-users/',
+                'organizaciones': '/api_ubicacion/organizaciones/',
+                'fincas': '/api_ubicacion/fincas/',
+                'parcelas': '/api_ubicacion/parcelas/',
+                'nodos_iot': '/api_iot/nodos-iot/',
+                'sensores': '/api_iot/sensores/',
+                'lecturas_sensor': '/api_iot/lecturas-sensor/',
+                'actuadores': '/api_iot/actuadores/',
+                'estados_riego': '/api_riego/estados-riego/',
+                'reglas_riego': '/api_riego/reglas-riego/',
+                'comandos_riego': '/api_riego/comandos-riego/',
+                'respuestas_comando': '/api_riego/respuestas-comando/',
+                'alertas_sistema': '/api_sistema/alertas-sistema/',
+                'auditorias_sistema': '/api_sistema/auditorias-sistema/',
+            },
+            'ejemplo_uso': {
+                'paso_1': 'POST /api_usuarios/auth/login/ con username y password.',
+                'paso_2': 'Copia el token de la respuesta.',
+                'paso_3': 'GET /api_ubicacion/fincas/ con Authorization: Token <token>.',
+            },
         })
 
 
 class UsuarioPerfilViewSet(viewsets.ModelViewSet):
-    queryset = UsuarioPerfil.objects.all()
+    queryset = UsuarioPerfil.objects.select_related('usuario', 'organizacion').all()
     serializer_class = UsuarioPerfilSerializer
     permission_classes = [IsAuthenticated]
+
+
+class AuthUserViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = User.objects.order_by('id')
+    serializer_class = UserSerializer
+    permission_classes = [IsAdminUser]
 
 
 class RolViewSet(viewsets.ModelViewSet):

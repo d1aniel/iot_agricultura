@@ -7,9 +7,43 @@ from .models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
 
 
 class UsuarioPerfilSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='usuario.username', read_only=True)
+    email = serializers.EmailField(source='usuario.email', read_only=True)
+    first_name = serializers.CharField(source='usuario.first_name', read_only=True)
+    last_name = serializers.CharField(source='usuario.last_name', read_only=True)
+    nombre_completo = serializers.SerializerMethodField()
+    organizacion_nombre = serializers.CharField(source='organizacion.nombre', read_only=True)
+
     class Meta:
         model = UsuarioPerfil
-        fields = '__all__'
+        fields = (
+            'id',
+            'usuario',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'nombre_completo',
+            'organizacion',
+            'organizacion_nombre',
+            'telefono',
+            'estado',
+            'ultimo_acceso',
+            'fecha_creacion',
+        )
+        read_only_fields = (
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'nombre_completo',
+            'organizacion_nombre',
+            'ultimo_acceso',
+            'fecha_creacion',
+        )
+
+    def get_nombre_completo(self, obj):
+        return obj.usuario.get_full_name() or obj.usuario.username
 
 
 class RolSerializer(serializers.ModelSerializer):
