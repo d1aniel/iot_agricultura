@@ -1,6 +1,5 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
@@ -15,11 +14,13 @@ from myapps.riego.serializers import (
     RespuestaComandoSerializer,
 )
 from myapps.usuarios.models import UsuarioPerfil
+from myapps.usuarios.permissions import IsUsuarioConRolActivo
 
 
 class EstadoRiegoViewSet(viewsets.ModelViewSet):
     queryset = EstadoRiego.objects.all()
     serializer_class = EstadoRiegoSerializer
+    permission_classes = [IsUsuarioConRolActivo]
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
@@ -32,12 +33,13 @@ class EstadoRiegoViewSet(viewsets.ModelViewSet):
 class ReglaRiegoAutomaticoViewSet(viewsets.ModelViewSet):
     queryset = ReglaRiegoAutomatico.objects.all()
     serializer_class = ReglaRiegoAutomaticoSerializer
+    permission_classes = [IsUsuarioConRolActivo]
 
 
 class ComandoRiegoViewSet(viewsets.ModelViewSet):
     queryset = ComandoRiego.objects.all()
     serializer_class = ComandoRiegoSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsUsuarioConRolActivo]
 
     def _crear_comando_manual(self, request, comando):
         serializer = ComandoManualSerializer(data=request.data)
@@ -72,3 +74,4 @@ class ComandoRiegoViewSet(viewsets.ModelViewSet):
 class RespuestaComandoViewSet(viewsets.ModelViewSet):
     queryset = RespuestaComando.objects.all()
     serializer_class = RespuestaComandoSerializer
+    permission_classes = [IsUsuarioConRolActivo]

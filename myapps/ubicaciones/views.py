@@ -7,25 +7,29 @@ from myapps.iot.models import NodoIoT
 from myapps.iot.serializers import NodoIoTSerializer
 from myapps.ubicaciones.models import Finca, Organizacion, Parcela
 from myapps.ubicaciones.serializers import FincaSerializer, OrganizacionSerializer, ParcelaSerializer
+from myapps.usuarios.permissions import IsUsuarioConRolActivo
 
 
 class OrganizacionViewSet(viewsets.ModelViewSet):
     queryset = Organizacion.objects.all()
     serializer_class = OrganizacionSerializer
+    permission_classes = [IsUsuarioConRolActivo]
 
 
 class FincaViewSet(viewsets.ModelViewSet):
     queryset = Finca.objects.all()
     serializer_class = FincaSerializer
+    permission_classes = [IsUsuarioConRolActivo]
 
 
 class ParcelaViewSet(viewsets.ModelViewSet):
     queryset = Parcela.objects.all()
     serializer_class = ParcelaSerializer
+    permission_classes = [IsUsuarioConRolActivo]
 
 
 class DashboardView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsUsuarioConRolActivo]
 
     def get(self, request):
         usuario = request.user

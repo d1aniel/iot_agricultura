@@ -103,9 +103,13 @@ class RolViewSet(viewsets.ModelViewSet):
 
 
 class UsuarioRolViewSet(viewsets.ModelViewSet):
-    queryset = UsuarioRol.objects.all()
+    queryset = UsuarioRol.objects.select_related('usuario__usuario', 'rol', 'asignado_por__usuario').all()
     serializer_class = UsuarioRolSerializer
     permission_classes = [IsAdministradorOrAuditor]
+
+    def perform_create(self, serializer):
+        asignador = UsuarioPerfil.objects.filter(usuario=self.request.user).first()
+        serializer.save(asignado_por=asignador)
 
 
 def obtener_ip(request):

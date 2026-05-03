@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from .models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
-from .permissions import usuario_tiene_rol_administrativo
+from .permissions import usuario_tiene_rol_activo, usuario_tiene_rol_administrativo
 
 
 class UsuarioPerfilSerializer(serializers.ModelSerializer):
@@ -54,14 +54,32 @@ class RolSerializer(serializers.ModelSerializer):
 
 
 class UsuarioRolSerializer(serializers.ModelSerializer):
+    asignado_por_nombre = serializers.SerializerMethodField()
+
     class Meta:
         model = UsuarioRol
-        fields = '__all__'
+        fields = (
+            'id',
+            'usuario',
+            'rol',
+            'fecha_asignacion',
+            'asignado_por',
+            'asignado_por_nombre',
+            'estado',
+        )
+        read_only_fields = ('fecha_asignacion', 'asignado_por', 'asignado_por_nombre')
+
+    def get_asignado_por_nombre(self, obj):
+        if not obj.asignado_por:
+            return ''
+
+        return str(obj.asignado_por)
 
 
 class UserSerializer(serializers.ModelSerializer):
     nombre_completo = serializers.SerializerMethodField()
     roles = serializers.SerializerMethodField()
+    tiene_rol_activo = serializers.SerializerMethodField()
     es_administrador_o_auditor = serializers.SerializerMethodField()
 
     class Meta:
@@ -75,9 +93,10 @@ class UserSerializer(serializers.ModelSerializer):
             'nombre_completo',
             'is_active',
             'roles',
+            'tiene_rol_activo',
             'es_administrador_o_auditor',
         )
-        read_only_fields = ('id', 'is_active', 'nombre_completo', 'roles', 'es_administrador_o_auditor')
+        read_only_fields = ('id', 'is_active', 'nombre_completo', 'roles', 'tiene_rol_activo', 'es_administrador_o_auditor')
 
     def get_nombre_completo(self, obj):
         return obj.get_full_name()
@@ -95,6 +114,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_es_administrador_o_auditor(self, obj):
         return usuario_tiene_rol_administrativo(obj)
+
+    def get_tiene_rol_activo(self, obj):
+        return usuario_tiene_rol_activo(obj)
 
 
 class RegistroSerializer(serializers.Serializer):

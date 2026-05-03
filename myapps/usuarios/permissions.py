@@ -30,6 +30,27 @@ def usuario_tiene_rol_administrativo(user):
     ).exists()
 
 
+def usuario_tiene_rol_activo(user):
+    if not user or not user.is_authenticated:
+        return False
+
+    if user.is_staff or user.is_superuser:
+        return True
+
+    perfil = getattr(user, 'perfil_iot', None)
+    if not perfil:
+        return False
+
+    return perfil.roles.filter(estado='ACTIVO', rol__estado='ACTIVO').exists()
+
+
+class IsUsuarioConRolActivo(BasePermission):
+    message = 'Tu usuario aun no tiene un rol activo asignado.'
+
+    def has_permission(self, request, view):
+        return usuario_tiene_rol_activo(request.user)
+
+
 class IsAdministradorOrAuditor(BasePermission):
     message = 'Solo usuarios con rol Administrador o Auditor pueden acceder a este modulo.'
 
