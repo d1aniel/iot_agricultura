@@ -6,6 +6,8 @@ from .views import (
     AuthTokenViewSet,
     LoginView,
     LogoutView,
+    CambiarPasswordTemporalView,
+    OlvidePasswordView,
     PerfilActualView,
     RegistroView,
     RolViewSet,
@@ -25,6 +27,8 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/me/', PerfilActualView.as_view(), name='auth-me'),
+    path('auth/cambiar-password-temporal/', CambiarPasswordTemporalView.as_view(), name='auth-cambiar-password-temporal'),
+    path('auth/olvide-password/', OlvidePasswordView.as_view(), name='auth-olvide-password'),
 ]
 
 urlpatterns += router.urls

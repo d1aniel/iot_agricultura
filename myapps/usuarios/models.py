@@ -23,6 +23,7 @@ class UsuarioPerfil(models.Model):
     )
     telefono = models.CharField(max_length=30, blank=True, null=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='ACTIVO')
+    requiere_cambio_password = models.BooleanField(default=False)
     ultimo_acceso = models.DateTimeField(blank=True, null=True)
     fecha_creacion = models.DateTimeField(default=timezone.now)
 

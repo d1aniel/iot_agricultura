@@ -7,7 +7,11 @@ from myapps.iot.models import NodoIoT
 from myapps.iot.serializers import NodoIoTSerializer
 from myapps.ubicaciones.models import Finca, Organizacion, Parcela
 from myapps.ubicaciones.serializers import FincaSerializer, OrganizacionSerializer, ParcelaSerializer
-from myapps.usuarios.permissions import IsUsuarioConRolActivo
+from myapps.usuarios.permissions import IsUsuarioConRolActivo, usuario_tiene_rol_administrativo
+
+
+def perfil_actual(user):
+    return getattr(user, 'perfil_iot', None)
 
 
 class OrganizacionViewSet(viewsets.ModelViewSet):
@@ -15,17 +19,44 @@ class OrganizacionViewSet(viewsets.ModelViewSet):
     serializer_class = OrganizacionSerializer
     permission_classes = [IsUsuarioConRolActivo]
 
+    def get_queryset(self):
+        if usuario_tiene_rol_administrativo(self.request.user):
+            return self.queryset
+
+        perfil = perfil_actual(self.request.user)
+        if not perfil or not perfil.organizacion_id:
+            return self.queryset.none()
+
+        return self.queryset.filter(id=perfil.organizacion_id)
+
 
 class FincaViewSet(viewsets.ModelViewSet):
     queryset = Finca.objects.all()
     serializer_class = FincaSerializer
     permission_classes = [IsUsuarioConRolActivo]
 
+    def get_queryset(self):
+        if usuario_tiene_rol_administrativo(self.request.user):
+            return self.queryset
+
+        perfil = perfil_actual(self.request.user)
+        queryset = self.queryset.filter(usuario=self.request.user)
+        if perfil and perfil.organizacion_id:
+            queryset = queryset | self.queryset.filter(organizacion_id=perfil.organizacion_id, usuario=self.request.user)
+
+        return queryset.distinct()
+
 
 class ParcelaViewSet(viewsets.ModelViewSet):
     queryset = Parcela.objects.all()
     serializer_class = ParcelaSerializer
     permission_classes = [IsUsuarioConRolActivo]
+
+    def get_queryset(self):
+        if usuario_tiene_rol_administrativo(self.request.user):
+            return self.queryset
+
+        return self.queryset.filter(finca__usuario=self.request.user)
 
 
 class DashboardView(APIView):

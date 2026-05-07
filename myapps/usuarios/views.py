@@ -12,7 +12,9 @@ from myapps.usuarios.models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
 from myapps.usuarios.permissions import IsAdministradorOrAuditor
 from myapps.usuarios.serializers import (
     AuthTokenSerializer,
+    CambiarPasswordTemporalSerializer,
     LoginSerializer,
+    OlvidePasswordSerializer,
     RegistroSerializer,
     RolSerializer,
     UserSerializer,
@@ -43,16 +45,16 @@ class ApiRootView(APIView):
                     'nombre_dispositivo': 'Navegador web',
                 },
             },
-            'registro': {
+            'creacion_usuarios': {
                 'method': 'POST',
-                'url': '/api_usuarios/auth/registro/',
-                'alias': '/api/users/register/',
+                'url': '/api_usuarios/usuarios/',
+                'seguridad': 'Solo Administrador o Auditor.',
                 'body': {
-                    'username': 'usuario',
-                    'password': 'contrasena',
-                    'email': 'correo@example.com',
-                    'first_name': 'Nombre',
-                    'last_name': 'Apellido',
+                    'nuevo_username': 'usuario',
+                    'password_temporal': 'contrasena_temporal',
+                    'nuevo_email': 'correo@example.com',
+                    'nuevos_nombres': 'Nombre',
+                    'nuevos_apellidos': 'Apellido',
                     'telefono': '3000000000',
                 },
             },
@@ -150,17 +152,17 @@ def crear_respuesta_token(user, request, nombre_dispositivo=None, status_code=st
 
 
 class RegistroView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdministradorOrAuditor]
 
     def get(self, request):
         return Response({
-            'detail': 'Envia una peticion POST con JSON para registrar un usuario.',
+            'detail': 'El registro publico esta deshabilitado. Los usuarios deben ser creados por un administrador.',
             'body': {
-                'username': 'usuario',
-                'password': 'contrasena',
-                'email': 'correo@example.com',
-                'first_name': 'Nombre',
-                'last_name': 'Apellido',
+                'nuevo_username': 'usuario',
+                'password_temporal': 'contrasena_temporal',
+                'nuevo_email': 'correo@example.com',
+                'nuevos_nombres': 'Nombre',
+                'nuevos_apellidos': 'Apellido',
                 'telefono': '3000000000',
             },
         })
@@ -209,6 +211,41 @@ class PerfilActualView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+
+class CambiarPasswordTemporalView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = CambiarPasswordTemporalSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        request.user.set_password(serializer.validated_data['nueva_password'])
+        request.user.save(update_fields=['password'])
+
+        perfil = UsuarioPerfil.objects.filter(usuario=request.user).first()
+        if perfil:
+            perfil.requiere_cambio_password = False
+            perfil.save(update_fields=['requiere_cambio_password'])
+
+        return Response({
+            'detail': 'Contrasena actualizada correctamente.',
+            'usuario': UserSerializer(request.user).data,
+        })
+
+
+class OlvidePasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = OlvidePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        identificador = serializer.validated_data['identificador']
+        User.objects.filter(username=identificador).first() or User.objects.filter(email=identificador).first()
+        return Response({
+            'detail': 'Si el usuario existe, solicita a un administrador restablecer una contrasena temporal.',
+        })
 
 
 class AuthTokenViewSet(viewsets.ReadOnlyModelViewSet):

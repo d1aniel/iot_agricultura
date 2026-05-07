@@ -14,12 +14,22 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(source='usuario.last_name', read_only=True)
     nombre_completo = serializers.SerializerMethodField()
     organizacion_nombre = serializers.CharField(source='organizacion.nombre', read_only=True)
+    nuevo_username = serializers.CharField(write_only=True, required=False, max_length=150)
+    nuevo_email = serializers.EmailField(write_only=True, required=False)
+    nuevos_nombres = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=150)
+    nuevos_apellidos = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=150)
+    password_temporal = serializers.CharField(write_only=True, required=False, validators=[validate_password])
 
     class Meta:
         model = UsuarioPerfil
         fields = (
             'id',
             'usuario',
+            'nuevo_username',
+            'nuevo_email',
+            'nuevos_nombres',
+            'nuevos_apellidos',
+            'password_temporal',
             'username',
             'email',
             'first_name',
@@ -29,6 +39,7 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
             'organizacion_nombre',
             'telefono',
             'estado',
+            'requiere_cambio_password',
             'ultimo_acceso',
             'fecha_creacion',
         )
@@ -39,12 +50,53 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
             'last_name',
             'nombre_completo',
             'organizacion_nombre',
+            'requiere_cambio_password',
             'ultimo_acceso',
             'fecha_creacion',
         )
+        extra_kwargs = {
+            'usuario': {'required': False},
+        }
 
     def get_nombre_completo(self, obj):
         return obj.usuario.get_full_name() or obj.usuario.username
+
+    def validate(self, attrs):
+        if self.instance:
+            return attrs
+
+        username = attrs.get('nuevo_username')
+        email = attrs.get('nuevo_email')
+        password = attrs.get('password_temporal')
+
+        if not username or not email or not password:
+            raise serializers.ValidationError('Usuario, correo y contrasena temporal son obligatorios.')
+        if User.objects.filter(username=username).exists():
+            raise serializers.ValidationError({'nuevo_username': 'Este nombre de usuario ya existe.'})
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError({'nuevo_email': 'Este correo ya esta registrado.'})
+        return attrs
+
+    def create(self, validated_data):
+        username = validated_data.pop('nuevo_username')
+        email = validated_data.pop('nuevo_email')
+        first_name = validated_data.pop('nuevos_nombres', '')
+        last_name = validated_data.pop('nuevos_apellidos', '')
+        password = validated_data.pop('password_temporal')
+        validated_data.pop('usuario', None)
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            password=password,
+        )
+        return UsuarioPerfil.objects.create(
+            usuario=user,
+            requiere_cambio_password=True,
+            **validated_data,
+        )
 
 
 class RolSerializer(serializers.ModelSerializer):
@@ -81,6 +133,7 @@ class UserSerializer(serializers.ModelSerializer):
     roles = serializers.SerializerMethodField()
     tiene_rol_activo = serializers.SerializerMethodField()
     es_administrador_o_auditor = serializers.SerializerMethodField()
+    requiere_cambio_password = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -95,8 +148,9 @@ class UserSerializer(serializers.ModelSerializer):
             'roles',
             'tiene_rol_activo',
             'es_administrador_o_auditor',
+            'requiere_cambio_password',
         )
-        read_only_fields = ('id', 'is_active', 'nombre_completo', 'roles', 'tiene_rol_activo', 'es_administrador_o_auditor')
+        read_only_fields = ('id', 'is_active', 'nombre_completo', 'roles', 'tiene_rol_activo', 'es_administrador_o_auditor', 'requiere_cambio_password')
 
     def get_nombre_completo(self, obj):
         return obj.get_full_name()
@@ -117,6 +171,25 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_tiene_rol_activo(self, obj):
         return usuario_tiene_rol_activo(obj)
+
+    def get_requiere_cambio_password(self, obj):
+        perfil = getattr(obj, 'perfil_iot', None)
+        return bool(perfil and perfil.requiere_cambio_password)
+
+
+class CambiarPasswordTemporalSerializer(serializers.Serializer):
+    password_actual = serializers.CharField(write_only=True)
+    nueva_password = serializers.CharField(write_only=True, validators=[validate_password])
+
+    def validate_password_actual(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError('La contrasena actual no es correcta.')
+        return value
+
+
+class OlvidePasswordSerializer(serializers.Serializer):
+    identificador = serializers.CharField()
 
 
 class RegistroSerializer(serializers.Serializer):
