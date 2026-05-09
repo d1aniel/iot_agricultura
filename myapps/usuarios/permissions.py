@@ -1,4 +1,4 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 ROLES_ADMINISTRATIVOS = {'administrador', 'admin', 'auditor'}
@@ -55,4 +55,14 @@ class IsAdministradorOrAuditor(BasePermission):
     message = 'Solo usuarios con rol Administrador o Auditor pueden acceder a este modulo.'
 
     def has_permission(self, request, view):
+        return usuario_tiene_rol_administrativo(request.user)
+
+
+class IsUsuarioConRolActivoOrAdministradorWrite(BasePermission):
+    message = 'No tienes permisos para modificar este modulo.'
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return usuario_tiene_rol_activo(request.user)
+
         return usuario_tiene_rol_administrativo(request.user)

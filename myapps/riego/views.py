@@ -14,17 +14,27 @@ from myapps.riego.serializers import (
     RespuestaComandoSerializer,
 )
 from myapps.usuarios.models import UsuarioPerfil
-from myapps.usuarios.permissions import IsUsuarioConRolActivo
+from myapps.usuarios.permissions import IsUsuarioConRolActivoOrAdministradorWrite
+
+
+def usuario_ve_todo(user):
+    return bool(user and user.is_authenticated and (user.is_staff or user.is_superuser))
 
 
 class EstadoRiegoViewSet(viewsets.ModelViewSet):
     queryset = EstadoRiego.objects.all()
     serializer_class = EstadoRiegoSerializer
-    permission_classes = [IsUsuarioConRolActivo]
+    permission_classes = [IsUsuarioConRolActivoOrAdministradorWrite]
+
+    def get_queryset(self):
+        if usuario_ve_todo(self.request.user):
+            return self.queryset
+
+        return self.queryset.filter(actuador__nodo__parcela__finca__usuario=self.request.user)
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
-        ultimo = EstadoRiego.objects.order_by('-fecha_hora_inicio').first()
+        ultimo = self.get_queryset().order_by('-fecha_hora_inicio').first()
         if ultimo:
             return Response(self.get_serializer(ultimo).data)
         return Response({'mensaje': 'No hay estados de riego'})
@@ -33,19 +43,35 @@ class EstadoRiegoViewSet(viewsets.ModelViewSet):
 class ReglaRiegoAutomaticoViewSet(viewsets.ModelViewSet):
     queryset = ReglaRiegoAutomatico.objects.all()
     serializer_class = ReglaRiegoAutomaticoSerializer
-    permission_classes = [IsUsuarioConRolActivo]
+    permission_classes = [IsUsuarioConRolActivoOrAdministradorWrite]
+
+    def get_queryset(self):
+        if usuario_ve_todo(self.request.user):
+            return self.queryset
+
+        return self.queryset.filter(parcela__finca__usuario=self.request.user)
 
 
 class ComandoRiegoViewSet(viewsets.ModelViewSet):
     queryset = ComandoRiego.objects.all()
     serializer_class = ComandoRiegoSerializer
-    permission_classes = [IsUsuarioConRolActivo]
+    permission_classes = [IsUsuarioConRolActivoOrAdministradorWrite]
+
+    def get_queryset(self):
+        if usuario_ve_todo(self.request.user):
+            return self.queryset
+
+        return self.queryset.filter(actuador__nodo__parcela__finca__usuario=self.request.user)
 
     def _crear_comando_manual(self, request, comando):
         serializer = ComandoManualSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        actuador = get_object_or_404(Actuador, id=serializer.validated_data['actuador_id'])
+        actuadores = Actuador.objects.all()
+        if not usuario_ve_todo(request.user):
+            actuadores = actuadores.filter(nodo__parcela__finca__usuario=request.user)
+
+        actuador = get_object_or_404(actuadores, id=serializer.validated_data['actuador_id'])
         usuario_perfil = None
 
         if request.user and request.user.is_authenticated:
@@ -74,4 +100,10 @@ class ComandoRiegoViewSet(viewsets.ModelViewSet):
 class RespuestaComandoViewSet(viewsets.ModelViewSet):
     queryset = RespuestaComando.objects.all()
     serializer_class = RespuestaComandoSerializer
-    permission_classes = [IsUsuarioConRolActivo]
+    permission_classes = [IsUsuarioConRolActivoOrAdministradorWrite]
+
+    def get_queryset(self):
+        if usuario_ve_todo(self.request.user):
+            return self.queryset
+
+        return self.queryset.filter(comando__actuador__nodo__parcela__finca__usuario=self.request.user)
