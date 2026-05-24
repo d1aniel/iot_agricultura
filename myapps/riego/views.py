@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 
+from myapps.iot.mqtt_service import publish_control
 from myapps.iot.models import Actuador
 from myapps.riego.models import ComandoRiego, EstadoRiego, ReglaRiegoAutomatico, RespuestaComando
 from myapps.riego.serializers import (
@@ -85,6 +86,11 @@ class ComandoRiegoViewSet(viewsets.ModelViewSet):
             estado_comando='PENDIENTE',
             parametro={'medio': 'pagina_web'},
         )
+
+        mqtt_command = 'ON' if comando == 'ENCENDER' else 'OFF'
+        publicado = publish_control(mqtt_command)
+        comando_riego.estado_comando = 'ENVIADO' if publicado else 'PENDIENTE'
+        comando_riego.save(update_fields=['estado_comando'])
 
         return Response(ComandoRiegoSerializer(comando_riego).data, status=status.HTTP_201_CREATED)
 

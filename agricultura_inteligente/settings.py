@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'myapps.usuarios',
     'myapps.ubicaciones',
-    'myapps.iot',
+    'myapps.iot.apps.IotConfig',
     'myapps.riego',
     'myapps.sistema',
     'rest_framework',
@@ -242,6 +242,15 @@ CORS_ORIGIN_ALLOW_ALL = True
 # )
 
 AUTH_TOKEN_EXPIRATION_DAYS = 7
+
+MQTT_ENABLED = config('MQTT_ENABLED', default=False, cast=bool)
+MQTT_BROKER_HOST = config('MQTT_BROKER_HOST', default='')
+MQTT_BROKER_PORT = config('MQTT_BROKER_PORT', default=8883, cast=int)
+MQTT_USERNAME = config('MQTT_USERNAME', default='')
+MQTT_PASSWORD = config('MQTT_PASSWORD', default='')
+MQTT_TOPIC_CONTROL = config('MQTT_TOPIC_CONTROL', default='riego/control')
+MQTT_TOPIC_DATOS = config('MQTT_TOPIC_DATOS', default='riego/datos')
+MQTT_DEFAULT_NODE_CODE = config('MQTT_DEFAULT_NODE_CODE', default='')
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
