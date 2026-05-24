@@ -98,6 +98,20 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
             **validated_data,
         )
 
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password_temporal', None)
+        validated_data.pop('nuevo_username', None)
+        validated_data.pop('nuevo_email', None)
+        validated_data.pop('nuevos_nombres', None)
+        validated_data.pop('nuevos_apellidos', None)
+
+        if password:
+            instance.usuario.set_password(password)
+            instance.usuario.save(update_fields=['password'])
+            instance.requiere_cambio_password = True
+
+        return super().update(instance, validated_data)
+
 
 class RolSerializer(serializers.ModelSerializer):
     class Meta:
