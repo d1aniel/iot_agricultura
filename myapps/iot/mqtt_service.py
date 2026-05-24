@@ -1,6 +1,8 @@
 import json
+import logging
 import ssl
 import threading
+import uuid
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -16,8 +18,12 @@ except ImportError:  # pragma: no cover - handled by dependency installation
     mqtt = None
 
 
+logger = logging.getLogger(__name__)
 _listener_started = False
 _listener_lock = threading.Lock()
+_last_payload = None
+_last_saved_reading = None
+_last_error = ''
 
 
 def mqtt_configured():
@@ -37,6 +43,7 @@ def start_listener_once():
     global _listener_started
 
     if not mqtt_configured():
+        logger.warning('MQTT no configurado. enabled=%s host=%s paho=%s', settings.MQTT_ENABLED, settings.MQTT_BROKER_HOST, bool(mqtt))
         return
 
     with _listener_lock:
@@ -46,6 +53,7 @@ def start_listener_once():
 
     thread = threading.Thread(target=_run_listener, name='mqtt-iot-listener', daemon=True)
     thread.start()
+    logger.info('Listener MQTT iniciado para topic %s', settings.MQTT_TOPIC_DATOS)
 
 
 def publish_control(command):
@@ -63,33 +71,43 @@ def publish_control(command):
 
 
 def _run_listener():
-    client = build_client('django-riego-listener')
+    client = build_client(f'django-riego-listener-{uuid.uuid4().hex[:10]}')
     client.on_connect = _on_connect
     client.on_message = _on_message
-    client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=60)
-    client.loop_forever()
+    try:
+        client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=60)
+        client.loop_forever(retry_first_connection=True)
+    except Exception as exc:
+        set_last_error(f'Error listener MQTT: {exc}')
+        logger.exception('Error ejecutando listener MQTT')
 
 
 def _on_connect(client, userdata, flags, reason_code, properties=None):
     client.subscribe(settings.MQTT_TOPIC_DATOS, qos=1)
+    logger.info('MQTT conectado con codigo %s. Suscrito a %s', reason_code, settings.MQTT_TOPIC_DATOS)
 
 
 def _on_message(client, userdata, message):
     close_old_connections()
     try:
-        payload = json.loads(message.payload.decode('utf-8'))
-        guardar_lectura_mqtt(payload)
+        raw_payload = message.payload.decode('utf-8')
+        logger.info('Mensaje MQTT recibido en %s: %s', message.topic, raw_payload)
+        payload = json.loads(raw_payload)
+        set_last_payload(payload)
+        lectura = guardar_lectura_mqtt(payload)
+        set_last_saved_reading(lectura)
     except Exception as exc:
-        print(f'Error procesando MQTT: {exc}')
+        set_last_error(f'Error procesando MQTT: {exc}')
+        logger.exception('Error procesando MQTT')
     finally:
         close_old_connections()
 
 
 def guardar_lectura_mqtt(payload):
-    codigo_nodo = payload.get('codigo_nodo') or payload.get('nodo') or settings.MQTT_DEFAULT_NODE_CODE
+    codigo_nodo = payload.get('codigo_nodo') or payload.get('nodo') or payload.get('codigo') or settings.MQTT_DEFAULT_NODE_CODE
     nodo = buscar_nodo(codigo_nodo)
     if not nodo:
-        raise ValueError('No se encontro un nodo IoT para la lectura MQTT.')
+        raise ValueError(f'No se encontro un nodo IoT para la lectura MQTT. codigo_nodo={codigo_nodo or "vacio"}')
 
     humedad = normalizar_decimal(payload.get('humedad'))
     if humedad is None:
@@ -100,7 +118,7 @@ def guardar_lectura_mqtt(payload):
     nodo.save(update_fields=['ultima_conexion', 'estado'])
 
     sensor = obtener_sensor_humedad(nodo)
-    LecturaSensor.objects.create(
+    lectura = LecturaSensor.objects.create(
         sensor=sensor,
         valor=humedad,
         unidad_medida='%',
@@ -109,12 +127,20 @@ def guardar_lectura_mqtt(payload):
     )
 
     actualizar_estado_actuador(nodo, payload)
+    logger.info('Lectura MQTT guardada. nodo=%s sensor=%s humedad=%s lectura=%s', nodo.codigo_nodo, sensor.id, humedad, lectura.id)
+    return lectura
 
 
 def buscar_nodo(codigo_nodo):
     if codigo_nodo:
-        return NodoIoT.objects.filter(codigo_nodo=codigo_nodo).first()
-    return NodoIoT.objects.order_by('id').first()
+        nodo = NodoIoT.objects.filter(codigo_nodo=codigo_nodo).first()
+        if nodo:
+            return nodo
+
+    if NodoIoT.objects.count() == 1:
+        return NodoIoT.objects.first()
+
+    return None
 
 
 def obtener_sensor_humedad(nodo):
@@ -163,3 +189,39 @@ def normalizar_decimal(value):
         return Decimal(str(value)).quantize(Decimal('0.01'))
     except (InvalidOperation, TypeError, ValueError):
         return None
+
+
+def set_last_payload(payload):
+    global _last_payload, _last_error
+    _last_payload = payload
+    _last_error = ''
+
+
+def set_last_saved_reading(lectura):
+    global _last_saved_reading, _last_error
+    _last_saved_reading = {
+        'id': lectura.id,
+        'sensor_id': lectura.sensor_id,
+        'valor': str(lectura.valor),
+        'fecha_hora': lectura.fecha_hora.isoformat(),
+    }
+    _last_error = ''
+
+
+def set_last_error(message):
+    global _last_error
+    _last_error = message
+
+
+def mqtt_status():
+    return {
+        'enabled': settings.MQTT_ENABLED,
+        'configured': mqtt_configured(),
+        'listener_started': _listener_started,
+        'topic_datos': settings.MQTT_TOPIC_DATOS,
+        'topic_control': settings.MQTT_TOPIC_CONTROL,
+        'default_node_code': settings.MQTT_DEFAULT_NODE_CODE,
+        'last_payload': _last_payload,
+        'last_saved_reading': _last_saved_reading,
+        'last_error': _last_error,
+    }

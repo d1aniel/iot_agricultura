@@ -1,6 +1,9 @@
 from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from myapps.iot.models import Actuador, LecturaSensor, NodoIoT, Sensor
+from myapps.iot.mqtt_service import guardar_lectura_mqtt, mqtt_status
 from myapps.iot.serializers import (
     ActuadorSerializer,
     LecturaSensorSerializer,
@@ -24,6 +27,15 @@ class NodoIoTViewSet(viewsets.ModelViewSet):
             return self.queryset
 
         return self.queryset.filter(parcela__finca__usuario=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='mqtt-status')
+    def mqtt_status(self, request):
+        return Response(mqtt_status())
+
+    @action(detail=False, methods=['post'], url_path='probar-lectura-mqtt')
+    def probar_lectura_mqtt(self, request):
+        lectura = guardar_lectura_mqtt(request.data)
+        return Response(LecturaSensorSerializer(lectura).data)
 
 
 class SensorViewSet(viewsets.ModelViewSet):
