@@ -70,6 +70,7 @@ class ComandoRiego(models.Model):
     COMANDO_CHOICES = [
         ('ENCENDER', 'Encender'),
         ('APAGAR', 'Apagar'),
+        ('AUTO', 'Automatico'),
         ('REINICIAR', 'Reiniciar'),
     ]
     ORIGEN_CHOICES = [

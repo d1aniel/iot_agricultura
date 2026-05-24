@@ -64,7 +64,7 @@ class ComandoRiegoViewSet(viewsets.ModelViewSet):
 
         return self.queryset.filter(actuador__nodo__parcela__finca__usuario=self.request.user)
 
-    def _crear_comando_manual(self, request, comando):
+    def _crear_comando_manual(self, request, comando, mqtt_command):
         serializer = ComandoManualSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -87,7 +87,6 @@ class ComandoRiegoViewSet(viewsets.ModelViewSet):
             parametro={'medio': 'pagina_web'},
         )
 
-        mqtt_command = 'ON' if comando == 'ENCENDER' else 'OFF'
         publicado = publish_control(mqtt_command)
         comando_riego.estado_comando = 'ENVIADO' if publicado else 'PENDIENTE'
         comando_riego.save(update_fields=['estado_comando'])
@@ -96,11 +95,15 @@ class ComandoRiegoViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='activar-manual')
     def activar_manual(self, request):
-        return self._crear_comando_manual(request, 'ENCENDER')
+        return self._crear_comando_manual(request, 'ENCENDER', 'ON')
 
     @action(detail=False, methods=['post'], url_path='desactivar-manual')
     def desactivar_manual(self, request):
-        return self._crear_comando_manual(request, 'APAGAR')
+        return self._crear_comando_manual(request, 'APAGAR', 'OFF')
+
+    @action(detail=False, methods=['post'], url_path='automatico-manual')
+    def automatico_manual(self, request):
+        return self._crear_comando_manual(request, 'AUTO', 'AUTO')
 
 
 class RespuestaComandoViewSet(viewsets.ModelViewSet):
