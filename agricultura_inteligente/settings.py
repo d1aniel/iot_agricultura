@@ -120,7 +120,14 @@ def database_from_url(database_url):
         'PORT': str(parsed.port or ''),
     }
     if engine == 'django.db.backends.mysql':
-        database_config['OPTIONS'] = {'charset': 'utf8mb4'}
+        database_config['CONN_MAX_AGE'] = config('DB_CONN_MAX_AGE', default=60, cast=int)
+        database_config['CONN_HEALTH_CHECKS'] = True
+        database_config['OPTIONS'] = {
+            'charset': 'utf8mb4',
+            'connect_timeout': config('DB_CONNECT_TIMEOUT', default=30, cast=int),
+            'read_timeout': config('DB_READ_TIMEOUT', default=30, cast=int),
+            'write_timeout': config('DB_WRITE_TIMEOUT', default=30, cast=int),
+        }
     return database_config
 
 
@@ -180,8 +187,13 @@ def get_database_config():
         'PASSWORD': get_first_config('MYSQL_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_ROOT_PASSWORD'),
         'HOST': get_first_config('MYSQL_HOST', 'MYSQLHOST', 'RAILWAY_PRIVATE_DOMAIN'),
         'PORT': get_first_config('MYSQL_PORT', 'MYSQLPORT', default='3306'),
+        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=60, cast=int),
+        'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
             'charset': 'utf8mb4',
+            'connect_timeout': config('DB_CONNECT_TIMEOUT', default=30, cast=int),
+            'read_timeout': config('DB_READ_TIMEOUT', default=30, cast=int),
+            'write_timeout': config('DB_WRITE_TIMEOUT', default=30, cast=int),
         },
     }, ['NAME', 'USER', 'PASSWORD', 'HOST', 'PORT'])
 

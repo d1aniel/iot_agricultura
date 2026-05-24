@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 from django.conf import settings
+import sys
 
 
 class IotConfig(AppConfig):
@@ -8,6 +9,8 @@ class IotConfig(AppConfig):
 
     def ready(self):
         if not settings.MQTT_ENABLED:
+            return
+        if any(command in sys.argv for command in ('check', 'collectstatic', 'makemigrations', 'migrate', 'shell')):
             return
 
         from myapps.iot.mqtt_service import start_listener_once
