@@ -10,11 +10,13 @@ from myapps.iot.serializers import (
     NodoIoTSerializer,
     SensorSerializer,
 )
-from myapps.usuarios.permissions import IsUsuarioConRolActivoOrAdministradorWrite
+from myapps.usuarios.permissions import IsUsuarioConRolActivoOrAdministradorWrite, usuario_tiene_rol_administrativo
 
 
 def usuario_ve_todo(user):
-    return bool(user and user.is_authenticated and (user.is_staff or user.is_superuser))
+    return bool(user and user.is_authenticated and (
+        user.is_staff or user.is_superuser or usuario_tiene_rol_administrativo(user)
+    ))
 
 
 class NodoIoTViewSet(viewsets.ModelViewSet):

@@ -7,7 +7,11 @@ from myapps.iot.models import NodoIoT
 from myapps.iot.serializers import NodoIoTSerializer
 from myapps.ubicaciones.models import Finca, Organizacion, Parcela
 from myapps.ubicaciones.serializers import FincaSerializer, OrganizacionSerializer, ParcelaSerializer
-from myapps.usuarios.permissions import IsUsuarioConRolActivo, IsUsuarioConRolActivoOrAdministradorWrite
+from myapps.usuarios.permissions import (
+    IsUsuarioConRolActivo,
+    IsUsuarioConRolActivoOrAdministradorWrite,
+    usuario_tiene_rol_administrativo,
+)
 
 
 def perfil_actual(user):
@@ -15,7 +19,9 @@ def perfil_actual(user):
 
 
 def usuario_ve_todo(user):
-    return bool(user and user.is_authenticated and (user.is_staff or user.is_superuser))
+    return bool(user and user.is_authenticated and (
+        user.is_staff or user.is_superuser or usuario_tiene_rol_administrativo(user)
+    ))
 
 
 class OrganizacionViewSet(viewsets.ModelViewSet):
