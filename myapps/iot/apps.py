@@ -10,7 +10,7 @@ class IotConfig(AppConfig):
     def ready(self):
         if not settings.MQTT_ENABLED:
             return
-        if any(command in sys.argv for command in ('check', 'collectstatic', 'makemigrations', 'migrate', 'shell')):
+        if any(command in sys.argv for command in ('check', 'collectstatic', 'makemigrations', 'migrate', 'shell', 'wait_for_db')):
             return
 
         from myapps.iot.mqtt_service import start_listener_once

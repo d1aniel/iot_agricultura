@@ -143,7 +143,7 @@ def require_database_config(database_config, required_keys):
 
 
 def get_database_config():
-    database_url = get_first_config('DATABASE_URL', 'MYSQL_URL', 'MYSQL_PUBLIC_URL')
+    database_url = get_first_config('MYSQL_URL', 'DATABASE_URL', 'MYSQL_PUBLIC_URL')
     if database_url:
         return database_from_url(database_url)
 
