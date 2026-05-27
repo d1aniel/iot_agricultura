@@ -70,6 +70,53 @@ def publish_control(command):
     return result.is_published()
 
 
+def leer_lectura_mqtt(timeout=4):
+    if not mqtt_configured():
+        set_last_error('MQTT no esta configurado.')
+        return None
+
+    event = threading.Event()
+    result = {'lectura': None}
+
+    def on_connect(client, userdata, flags, reason_code, properties=None):
+        client.subscribe(settings.MQTT_TOPIC_DATOS, qos=1)
+        logger.info('MQTT lectura bajo demanda conectado con codigo %s', reason_code)
+
+    def on_message(client, userdata, message):
+        close_old_connections()
+        try:
+            raw_payload = message.payload.decode('utf-8')
+            logger.info('Mensaje MQTT bajo demanda en %s: %s', message.topic, raw_payload)
+            payload = json.loads(raw_payload)
+            set_last_payload(payload)
+            lectura = guardar_lectura_mqtt(payload)
+            set_last_saved_reading(lectura)
+            result['lectura'] = lectura
+        except Exception as exc:
+            set_last_error(f'Error procesando MQTT bajo demanda: {exc}')
+            logger.exception('Error procesando MQTT bajo demanda')
+        finally:
+            close_old_connections()
+            event.set()
+
+    client = build_client(f'django-riego-demand-{uuid.uuid4().hex[:10]}')
+    client.on_connect = on_connect
+    client.on_message = on_message
+
+    try:
+        client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=30)
+        client.loop_start()
+        event.wait(timeout)
+    except Exception as exc:
+        set_last_error(f'Error leyendo MQTT bajo demanda: {exc}')
+        logger.exception('Error leyendo MQTT bajo demanda')
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+    return result['lectura']
+
+
 def _run_listener():
     client = build_client(f'django-riego-listener-{uuid.uuid4().hex[:10]}')
     client.on_connect = _on_connect

@@ -1,9 +1,11 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.utils import timezone
+from datetime import timedelta
 
 from myapps.iot.models import Actuador, LecturaSensor, NodoIoT, Sensor
-from myapps.iot.mqtt_service import guardar_lectura_mqtt, mqtt_status
+from myapps.iot.mqtt_service import guardar_lectura_mqtt, leer_lectura_mqtt, mqtt_status
 from myapps.iot.serializers import (
     ActuadorSerializer,
     LecturaSensorSerializer,
@@ -62,6 +64,29 @@ class LecturaSensorViewSet(viewsets.ModelViewSet):
             return self.queryset
 
         return self.queryset.filter(sensor__nodo__parcela__finca__usuario=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='latest-mqtt')
+    def latest_mqtt(self, request):
+        sensor_id = request.query_params.get('sensor_id')
+        queryset = self.get_queryset().filter(observacion__icontains='MQTT')
+        if sensor_id:
+            queryset = queryset.filter(sensor_id=sensor_id)
+
+        lectura = leer_lectura_mqtt(timeout=4)
+        if lectura:
+            queryset = self.get_queryset().filter(observacion__icontains='MQTT')
+            if sensor_id:
+                queryset = queryset.filter(sensor_id=sensor_id)
+
+        latest = queryset.order_by('-fecha_hora').first()
+        fresh_from_db = latest and latest.fecha_hora >= timezone.now() - timedelta(minutes=2)
+        if latest and (lectura or fresh_from_db):
+            return Response(self.get_serializer(latest).data)
+
+        return Response({
+            'mensaje': 'No se recibieron lecturas MQTT recientes para este sensor.',
+            'mqtt': mqtt_status(),
+        })
 
 
 class ActuadorViewSet(viewsets.ModelViewSet):
