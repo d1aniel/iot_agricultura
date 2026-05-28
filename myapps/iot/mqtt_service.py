@@ -225,6 +225,7 @@ def actualizar_estado_actuador(nodo, payload):
     if not actuador:
         return
 
+    ahora = timezone.now()
     riego_activo = bool(int(payload.get('riego', 0)))
     modo_payload = str(payload.get('modo', 'AUTO')).upper()
     estado_actual = 'ENCENDIDO' if riego_activo else 'APAGADO'
@@ -237,6 +238,11 @@ def actualizar_estado_actuador(nodo, payload):
     ultimo = EstadoRiego.objects.filter(actuador=actuador).order_by('-fecha_hora_inicio').first()
     if ultimo and ultimo.estado == estado_actual and ultimo.modo == modo:
         return
+
+    if ultimo and not ultimo.fecha_hora_fin:
+        ultimo.fecha_hora_fin = ahora
+        ultimo.duracion_segundos = max(0, int((ahora - ultimo.fecha_hora_inicio).total_seconds()))
+        ultimo.save(update_fields=['fecha_hora_fin', 'duracion_segundos'])
 
     EstadoRiego.objects.create(
         actuador=actuador,

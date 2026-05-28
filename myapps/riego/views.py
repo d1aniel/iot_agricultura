@@ -2,7 +2,10 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from datetime import timedelta
+from decimal import Decimal
 
 from myapps.iot.mqtt_service import publish_control
 from myapps.iot.models import Actuador
@@ -41,6 +44,63 @@ class EstadoRiegoViewSet(viewsets.ModelViewSet):
         if ultimo:
             return Response(self.get_serializer(ultimo).data)
         return Response({'mensaje': 'No hay estados de riego'})
+
+    @action(detail=False, methods=['get'], url_path='analitica')
+    def analitica(self, request):
+        actuador_id = request.query_params.get('actuador_id')
+        dias = int(request.query_params.get('dias', 7))
+        desde = timezone.now() - timedelta(days=dias)
+        queryset = self.get_queryset().filter(fecha_hora_inicio__gte=desde)
+
+        if actuador_id:
+            queryset = queryset.filter(actuador_id=actuador_id)
+
+        actuador = None
+        if actuador_id:
+            actuador = Actuador.objects.filter(id=actuador_id).first()
+        if not actuador:
+            actuador = queryset.order_by('-fecha_hora_inicio').first().actuador if queryset.exists() else None
+
+        caudal = Decimal(str(getattr(actuador, 'caudal_galones_hora', 0) or 0))
+        total_segundos = 0
+        activaciones = 0
+        serie_por_dia = {}
+        ahora = timezone.now()
+
+        for estado in queryset.filter(estado='ENCENDIDO').order_by('fecha_hora_inicio'):
+            fin = estado.fecha_hora_fin or ahora
+            duracion = estado.duracion_segundos
+            if duracion is None:
+                duracion = max(0, int((fin - estado.fecha_hora_inicio).total_seconds()))
+
+            total_segundos += duracion
+            activaciones += 1
+            dia = estado.fecha_hora_inicio.date().isoformat()
+            serie_por_dia[dia] = serie_por_dia.get(dia, 0) + duracion
+
+        total_horas = Decimal(total_segundos) / Decimal(3600)
+        total_galones = total_horas * caudal
+        serie = []
+        for dia, segundos in sorted(serie_por_dia.items()):
+            horas = Decimal(segundos) / Decimal(3600)
+            serie.append({
+                'fecha': dia,
+                'segundos': segundos,
+                'horas': round(float(horas), 2),
+                'galones': round(float(horas * caudal), 2),
+            })
+
+        return Response({
+            'actuador_id': actuador.id if actuador else None,
+            'actuador_nombre': actuador.nombre if actuador else '',
+            'caudal_galones_hora': round(float(caudal), 2),
+            'periodo_dias': dias,
+            'tiempo_total_segundos': total_segundos,
+            'tiempo_total_horas': round(float(total_horas), 2),
+            'agua_total_galones': round(float(total_galones), 2),
+            'activaciones': activaciones,
+            'serie_diaria': serie,
+        })
 
 
 class ReglaRiegoAutomaticoViewSet(viewsets.ModelViewSet):

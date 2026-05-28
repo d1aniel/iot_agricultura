@@ -101,20 +101,30 @@ class AuthToken(models.Model):
     @classmethod
     def crear_token(cls, usuario, nombre_dispositivo=None, direccion_ip=None, user_agent=None):
         token = secrets.token_urlsafe(48)
-        dias_expiracion = getattr(settings, 'AUTH_TOKEN_EXPIRATION_DAYS', 7)
+        horas_expiracion = getattr(settings, 'AUTH_TOKEN_EXPIRATION_HOURS', 8)
+        if getattr(settings, 'AUTH_REVOKE_PREVIOUS_TOKENS_ON_LOGIN', True):
+            cls.objects.filter(usuario=usuario, revocado=False).update(revocado=True)
+
         cls.objects.create(
             usuario=usuario,
             token_hash=cls.hash_token(token),
             nombre_dispositivo=nombre_dispositivo,
             direccion_ip=direccion_ip,
             user_agent=user_agent,
-            fecha_expiracion=timezone.now() + timezone.timedelta(days=dias_expiracion),
+            fecha_expiracion=timezone.now() + timezone.timedelta(hours=horas_expiracion),
         )
         return token
 
     @property
     def esta_activo(self):
-        return not self.revocado and self.fecha_expiracion > timezone.now()
+        if self.revocado or self.fecha_expiracion <= timezone.now():
+            return False
+
+        idle_timeout = getattr(settings, 'AUTH_TOKEN_IDLE_TIMEOUT_MINUTES', 30)
+        if self.ultimo_uso and self.ultimo_uso <= timezone.now() - timezone.timedelta(minutes=idle_timeout):
+            return False
+
+        return True
 
     def __str__(self):
         return f'Token API de {self.usuario.username}'

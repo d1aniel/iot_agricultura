@@ -116,6 +116,7 @@ class Actuador(models.Model):
     tipo_actuador = models.CharField(max_length=50, choices=TIPO_CHOICES, default='RELE')
     modelo = models.CharField(max_length=80, blank=True, null=True)
     pin_conexion = models.CharField(max_length=20, blank=True, null=True)
+    caudal_galones_hora = models.DecimalField(max_digits=10, decimal_places=2, default=40.00)
     estado_actual = models.CharField(max_length=20, choices=ESTADO_ACTUAL_CHOICES, default='APAGADO')
     fecha_instalacion = models.DateField(blank=True, null=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='ACTIVO')
