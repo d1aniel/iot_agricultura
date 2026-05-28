@@ -179,13 +179,28 @@ def guardar_lectura_mqtt(payload):
 
 
 def buscar_nodo(codigo_nodo):
+    codigo_normalizado = str(codigo_nodo or '').strip()
+
     if codigo_nodo:
-        nodo = NodoIoT.objects.filter(codigo_nodo=codigo_nodo).first()
+        nodo = NodoIoT.objects.filter(codigo_nodo__iexact=codigo_normalizado).first()
         if nodo:
             return nodo
 
     if NodoIoT.objects.count() == 1:
         return NodoIoT.objects.first()
+
+    nodos_con_sensor_humedad = NodoIoT.objects.filter(
+        sensores__tipo_sensor='HUMEDAD_SUELO',
+        sensores__estado='ACTIVO',
+    ).distinct()
+    if nodos_con_sensor_humedad.count() == 1:
+        nodo = nodos_con_sensor_humedad.first()
+        logger.warning(
+            'No se encontro codigo_nodo=%s. Usando unico nodo con sensor HUMEDAD_SUELO: %s',
+            codigo_normalizado or 'vacio',
+            nodo.codigo_nodo,
+        )
+        return nodo
 
     return None
 
