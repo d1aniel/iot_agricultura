@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from myapps.sistema.models import AuditoriaSistema
+from myapps.sistema.models import AlertaSistema, AuditoriaSistema
 from myapps.usuarios.models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
 from myapps.usuarios.permissions import IsAdministradorOrAuditor
 from myapps.usuarios.serializers import (
@@ -242,7 +242,29 @@ class OlvidePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
 
         identificador = serializer.validated_data['identificador']
-        User.objects.filter(username=identificador).first() or User.objects.filter(email=identificador).first()
+        user = User.objects.filter(username=identificador).first() or User.objects.filter(email=identificador).first()
+
+        if user:
+            perfil = UsuarioPerfil.objects.filter(usuario=user).first()
+            nombre = user.get_full_name() or user.username
+            AlertaSistema.objects.create(
+                tipo_alerta='Restablecimiento de contrasena',
+                severidad='MEDIA',
+                mensaje=(
+                    f'El usuario {nombre} ({user.username}) solicito restablecer su contrasena. '
+                    f'Correo registrado: {user.email or "sin correo"}. '
+                    'Un administrador debe editar el usuario y asignar una nueva contrasena temporal.'
+                ),
+                estado='ABIERTA',
+            )
+            AuditoriaSistema.objects.create(
+                usuario=perfil,
+                tabla_afectada='auth',
+                accion='ACTUALIZAR',
+                descripcion='Solicitud de restablecimiento de contrasena',
+                direccion_ip=obtener_ip(request),
+            )
+
         return Response({
             'detail': 'Si el usuario existe, solicita a un administrador restablecer una contrasena temporal.',
         })
