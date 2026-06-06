@@ -155,12 +155,19 @@ def enviar_correo_usuario_creado(user, password_temporal):
         headers={
             'Authorization': f'Bearer {settings.RESEND_API_KEY}',
             'Content-Type': 'application/json',
+            'User-Agent': 'agricultura-inteligente-backend/1.0',
         },
         method='POST',
     )
     try:
         urlrequest.urlopen(req, timeout=10)
-    except (HTTPError, URLError) as exc:
+    except HTTPError as exc:
+        detalle = exc.read().decode('utf-8', errors='replace')
+        print(
+            'Error enviando correo de usuario creado: '
+            f'status={exc.code} from={settings.RESEND_FROM_EMAIL} to={user.email} body={detalle}'
+        )
+    except URLError as exc:
         print(f'Error enviando correo de usuario creado: {exc}')
 
 
