@@ -256,6 +256,9 @@ CORS_ORIGIN_ALLOW_ALL = True
 AUTH_TOKEN_EXPIRATION_HOURS = config('AUTH_TOKEN_EXPIRATION_HOURS', default=8, cast=int)
 AUTH_TOKEN_IDLE_TIMEOUT_MINUTES = config('AUTH_TOKEN_IDLE_TIMEOUT_MINUTES', default=30, cast=int)
 AUTH_REVOKE_PREVIOUS_TOKENS_ON_LOGIN = config('AUTH_REVOKE_PREVIOUS_TOKENS_ON_LOGIN', default=True, cast=bool)
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:4200')
+RESEND_API_KEY = config('RESEND_API_KEY', default='')
+RESEND_FROM_EMAIL = config('RESEND_FROM_EMAIL', default='onboarding@resend.dev')
 
 MQTT_ENABLED = config('MQTT_ENABLED', default=False, cast=bool)
 MQTT_BROKER_HOST = config('MQTT_BROKER_HOST', default='')

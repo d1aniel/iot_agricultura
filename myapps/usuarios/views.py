@@ -1,5 +1,14 @@
+import json
+from urllib import request as urlrequest
+from urllib.error import URLError, HTTPError
+from urllib.parse import urlencode
+
+from django.conf import settings
+from django.contrib.auth.tokens import default_token_generator
 from django.db import transaction
 from django.utils import timezone
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.contrib.auth.models import User
 
 from rest_framework import status, viewsets
@@ -7,7 +16,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from myapps.sistema.models import AlertaSistema, AuditoriaSistema
+from myapps.sistema.models import AuditoriaSistema
 from myapps.usuarios.models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
 from myapps.usuarios.permissions import IsAdministradorOrAuditor
 from myapps.usuarios.serializers import (
@@ -15,6 +24,7 @@ from myapps.usuarios.serializers import (
     CambiarPasswordTemporalSerializer,
     LoginSerializer,
     OlvidePasswordSerializer,
+    RestablecerPasswordSerializer,
     RegistroSerializer,
     RolSerializer,
     UserSerializer,
@@ -245,29 +255,80 @@ class OlvidePasswordView(APIView):
         user = User.objects.filter(username=identificador).first() or User.objects.filter(email=identificador).first()
 
         if user:
-            perfil = UsuarioPerfil.objects.filter(usuario=user).first()
-            nombre = user.get_full_name() or user.username
-            AlertaSistema.objects.create(
-                tipo_alerta='Restablecimiento de contrasena',
-                severidad='MEDIA',
-                mensaje=(
-                    f'El usuario {nombre} ({user.username}) solicito restablecer su contrasena. '
-                    f'Correo registrado: {user.email or "sin correo"}. '
-                    'Un administrador debe editar el usuario y asignar una nueva contrasena temporal.'
-                ),
-                estado='ABIERTA',
-            )
+            enviar_correo_restablecimiento(user)
             AuditoriaSistema.objects.create(
-                usuario=perfil,
+                usuario=UsuarioPerfil.objects.filter(usuario=user).first(),
                 tabla_afectada='auth',
                 accion='ACTUALIZAR',
-                descripcion='Solicitud de restablecimiento de contrasena',
+                descripcion='Envio de enlace de restablecimiento de contrasena',
                 direccion_ip=obtener_ip(request),
             )
 
         return Response({
-            'detail': 'Si el usuario existe, solicita a un administrador restablecer una contrasena temporal.',
+            'detail': 'Si el usuario existe y tiene correo registrado, recibira un enlace para restablecer su contrasena.',
         })
+
+
+class RestablecerPasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RestablecerPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(serializer.validated_data['uid']))
+            user = User.objects.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response({'detail': 'Enlace invalido o expirado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, serializer.validated_data['token']):
+            return Response({'detail': 'Enlace invalido o expirado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(serializer.validated_data['nueva_password'])
+        user.save(update_fields=['password'])
+
+        AuthToken.objects.filter(usuario=user, revocado=False).update(revocado=True)
+        perfil = UsuarioPerfil.objects.filter(usuario=user).first()
+        if perfil:
+            perfil.requiere_cambio_password = False
+            perfil.save(update_fields=['requiere_cambio_password'])
+
+        return Response({'detail': 'Contrasena restablecida correctamente. Inicia sesion con tu nueva contrasena.'})
+
+
+def enviar_correo_restablecimiento(user):
+    if not user.email or not settings.RESEND_API_KEY:
+        return
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    reset_url = f'{settings.FRONTEND_URL.rstrip("/")}/restablecer-contrasena?{urlencode({"uid": uid, "token": token})}'
+    nombre = user.get_full_name() or user.username
+    payload = {
+        'from': settings.RESEND_FROM_EMAIL,
+        'to': user.email,
+        'subject': 'Restablece tu contrasena - Riego IoT',
+        'html': (
+            f'<p>Hola {nombre},</p>'
+            '<p>Recibimos una solicitud para restablecer tu contrasena.</p>'
+            f'<p><a href="{reset_url}">Restablecer contrasena</a></p>'
+            '<p>Si no solicitaste este cambio, puedes ignorar este correo.</p>'
+        ),
+    }
+    req = urlrequest.Request(
+        'https://api.resend.com/emails',
+        data=json.dumps(payload).encode('utf-8'),
+        headers={
+            'Authorization': f'Bearer {settings.RESEND_API_KEY}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    try:
+        urlrequest.urlopen(req, timeout=10)
+    except (HTTPError, URLError) as exc:
+        print(f'Error enviando correo de restablecimiento: {exc}')
 
 
 class AuthTokenViewSet(viewsets.ReadOnlyModelViewSet):

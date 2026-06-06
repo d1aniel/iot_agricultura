@@ -94,7 +94,7 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
         )
         return UsuarioPerfil.objects.create(
             usuario=user,
-            requiere_cambio_password=True,
+            requiere_cambio_password=False,
             **validated_data,
         )
 
@@ -204,6 +204,12 @@ class CambiarPasswordTemporalSerializer(serializers.Serializer):
 
 class OlvidePasswordSerializer(serializers.Serializer):
     identificador = serializers.CharField()
+
+
+class RestablecerPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    nueva_password = serializers.CharField(write_only=True, validators=[validate_password])
 
 
 class RegistroSerializer(serializers.Serializer):
