@@ -1,17 +1,21 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.conf import settings
 from rest_framework import serializers
+import json
+from urllib import request as urlrequest
+from urllib.error import HTTPError, URLError
 
 from .models import AuthToken, Rol, UsuarioPerfil, UsuarioRol
 from .permissions import usuario_tiene_rol_activo, usuario_tiene_rol_administrativo
 
 
 class UsuarioPerfilSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='usuario.username', read_only=True)
-    email = serializers.EmailField(source='usuario.email', read_only=True)
-    first_name = serializers.CharField(source='usuario.first_name', read_only=True)
-    last_name = serializers.CharField(source='usuario.last_name', read_only=True)
+    username = serializers.CharField(source='usuario.username', required=False, max_length=150)
+    email = serializers.EmailField(source='usuario.email', required=False)
+    first_name = serializers.CharField(source='usuario.first_name', required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(source='usuario.last_name', required=False, allow_blank=True, max_length=150)
     nombre_completo = serializers.SerializerMethodField()
     organizacion_nombre = serializers.CharField(source='organizacion.nombre', read_only=True)
     nuevo_username = serializers.CharField(write_only=True, required=False, max_length=150)
@@ -44,10 +48,6 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
             'fecha_creacion',
         )
         read_only_fields = (
-            'username',
-            'email',
-            'first_name',
-            'last_name',
             'nombre_completo',
             'organizacion_nombre',
             'requiere_cambio_password',
@@ -63,6 +63,13 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.instance:
+            usuario_data = attrs.get('usuario', {})
+            username = usuario_data.get('username')
+            email = usuario_data.get('email')
+            if username and User.objects.exclude(pk=self.instance.usuario_id).filter(username=username).exists():
+                raise serializers.ValidationError({'username': 'Este nombre de usuario ya existe.'})
+            if email and User.objects.exclude(pk=self.instance.usuario_id).filter(email=email).exists():
+                raise serializers.ValidationError({'email': 'Este correo ya esta registrado.'})
             return attrs
 
         username = attrs.get('nuevo_username')
@@ -92,18 +99,28 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
             last_name=last_name,
             password=password,
         )
-        return UsuarioPerfil.objects.create(
+        perfil = UsuarioPerfil.objects.create(
             usuario=user,
-            requiere_cambio_password=False,
+            requiere_cambio_password=True,
             **validated_data,
         )
+        enviar_correo_usuario_creado(user, password)
+        return perfil
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password_temporal', None)
+        usuario_data = validated_data.pop('usuario', {})
         validated_data.pop('nuevo_username', None)
         validated_data.pop('nuevo_email', None)
         validated_data.pop('nuevos_nombres', None)
         validated_data.pop('nuevos_apellidos', None)
+
+        if usuario_data:
+            user = instance.usuario
+            for field in ('username', 'email', 'first_name', 'last_name'):
+                if field in usuario_data:
+                    setattr(user, field, usuario_data[field])
+            user.save(update_fields=[field for field in ('username', 'email', 'first_name', 'last_name') if field in usuario_data])
 
         if password:
             instance.usuario.set_password(password)
@@ -111,6 +128,40 @@ class UsuarioPerfilSerializer(serializers.ModelSerializer):
             instance.requiere_cambio_password = True
 
         return super().update(instance, validated_data)
+
+
+def enviar_correo_usuario_creado(user, password_temporal):
+    if not user.email or not settings.RESEND_API_KEY:
+        return
+
+    login_url = f'{settings.FRONTEND_URL.rstrip("/")}/login'
+    nombre = user.get_full_name() or user.username
+    payload = {
+        'from': settings.RESEND_FROM_EMAIL,
+        'to': user.email,
+        'subject': 'Tu cuenta de Riego IoT fue creada',
+        'html': (
+            f'<p>Hola {nombre},</p>'
+            '<p>Un administrador creo tu cuenta en el sistema de riego inteligente.</p>'
+            f'<p><strong>Usuario:</strong> {user.username}</p>'
+            f'<p><strong>Contrasena temporal:</strong> {password_temporal}</p>'
+            f'<p>Ingresa aqui: <a href="{login_url}">{login_url}</a></p>'
+            '<p>Al iniciar sesion se te pedira cambiar esta contrasena temporal.</p>'
+        ),
+    }
+    req = urlrequest.Request(
+        'https://api.resend.com/emails',
+        data=json.dumps(payload).encode('utf-8'),
+        headers={
+            'Authorization': f'Bearer {settings.RESEND_API_KEY}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    try:
+        urlrequest.urlopen(req, timeout=10)
+    except (HTTPError, URLError) as exc:
+        print(f'Error enviando correo de usuario creado: {exc}')
 
 
 class RolSerializer(serializers.ModelSerializer):
