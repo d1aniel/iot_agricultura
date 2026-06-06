@@ -259,6 +259,7 @@ AUTH_REVOKE_PREVIOUS_TOKENS_ON_LOGIN = config('AUTH_REVOKE_PREVIOUS_TOKENS_ON_LO
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:4200')
 RESEND_API_KEY = config('RESEND_API_KEY', default='')
 RESEND_FROM_EMAIL = config('RESEND_FROM_EMAIL', default='onboarding@resend.dev')
+PASSWORD_RESET_TIMEOUT = config('PASSWORD_RESET_TIMEOUT', default=600, cast=int)
 
 MQTT_ENABLED = config('MQTT_ENABLED', default=False, cast=bool)
 MQTT_BROKER_HOST = config('MQTT_BROKER_HOST', default='')
